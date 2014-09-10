@@ -1,0 +1,49 @@
+package PRFWK;
+
+{$R *.res}
+{$ALIGN 8}
+{$ASSERTIONS ON}
+{$BOOLEVAL OFF}
+{$DEBUGINFO ON}
+{$EXTENDEDSYNTAX ON}
+{$IMPORTEDDATA ON}
+{$IOCHECKS ON}
+{$LOCALSYMBOLS ON}
+{$LONGSTRINGS ON}
+{$OPENSTRINGS ON}
+{$OPTIMIZATION ON}
+{$OVERFLOWCHECKS OFF}
+{$RANGECHECKS OFF}
+{$REFERENCEINFO ON}
+{$SAFEDIVIDE OFF}
+{$STACKFRAMES OFF}
+{$TYPEDADDRESS OFF}
+{$VARSTRINGCHECKS ON}
+{$WRITEABLECONST OFF}
+{$MINENUMSIZE 1}
+{$IMAGEBASE $400000}
+{$IMPLICITBUILD ON}
+
+requires
+  rtl,
+  dbrtl,
+  dsnap,
+  vcldb,
+  vcl,
+  dbexpress,
+  DbxCommonDriver,
+  adortl;
+
+contains
+  MD_PRFWK_AdoDataSet in 'src\base\MD_PRFWK_AdoDataSet.pas',
+  MD_PRFWK_Atributo in 'src\base\MD_PRFWK_Atributo.pas',
+  MD_PRFWK_Classe in 'src\base\MD_PRFWK_Classe.pas',
+  MD_PRFWK_ClientDataSet in 'src\base\MD_PRFWK_ClientDataSet.pas',
+  MD_PRFWK_Conexao in 'src\base\MD_PRFWK_Conexao.pas',
+  MD_PRFWK_DataSetProvider in 'src\base\MD_PRFWK_DataSetProvider.pas',
+  MD_PRFWK_Entidade in 'src\base\MD_PRFWK_Entidade.pas',
+  MD_PRFWK_Gerente in 'src\base\MD_PRFWK_Gerente.pas',
+  MD_PRFWK_SqlDataSet in 'src\base\MD_PRFWK_SqlDataSet.pas',
+  MD_PRFWK_Utilidades in 'src\util\MD_PRFWK_Utilidades.pas';
+
+end.

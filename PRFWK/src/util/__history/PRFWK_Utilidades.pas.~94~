@@ -1,0 +1,720 @@
+unit PRFWK_Utilidades;
+
+interface
+
+uses PRFWK_Classe, Forms, SysUtils, StrUtils, IniFiles, Windows, Classes, Graphics;
+
+  type
+  TPRFWK_Utilidades = class(TPRFWK_Classe)
+
+  private
+    function replaceSubstring( stringAntiga, stringNova, s : string ) : string;
+    function extenso3em3( Numero : Word ) : string;
+  public
+    class function obterInstancia():TPRFWK_Utilidades;
+    function  obterPastaProjeto():String;
+    function  obterIniProjeto():String;
+    function  obterConfiguracao(sessao: string; ident: string; padrao: string = ''): String;
+    function  obterConfiguracaoAsBoolean(sessao: string; ident: string; padrao: boolean = true): Boolean;
+    procedure definirConfiguracao(sessao: string; ident: string; valor: string = '');
+    procedure definirConfiguracaoAsBoolean(sessao, ident:string; valor: Boolean);
+
+    function  existeIniProjeto():Boolean;
+
+    procedure msgInf(texto:String);
+    procedure msgCrit(texto:String);
+    function  msgPerg(texto:String):Boolean;
+    procedure msgAlerta(texto:String);
+
+    procedure criarForm(nomeForm: TFormClass);
+
+    function  extenso( Numero : extended ) : string;
+
+    function  diaSemana(Data: TDateTime): String;
+    function  minutoParaHora(Minutos: Integer): String;
+    function  horaParaMinuto(const s: string; const sep: string = ':'): Integer;
+    function  formatarValorString(Valor:Extended; Precisao: Byte = 2):String;
+    procedure textoEntreTags( Const S: String; Tag1, Tag2: String; list:TStrings );
+    function  uRLEncode(const S: string; const InQueryString: Boolean): string;
+
+    function  dataValida(data: Variant; valorDoBanco: Boolean):String;
+    function  obterDataNula(): String;
+    function  converteDataAccess(data: String; incluiFuncao: Boolean = true):String;
+    function  converteDataMysql(data: String):String;
+
+    function colorToString(const colColor: TColor; const revert: Boolean = false): string;
+    function stringToColor(sColor: string; const revert: Boolean = false): Cardinal;
+
+  published
+
+  end;
+
+const
+  DATANULA = '01/01/1500';
+var
+  instancia : TPRFWK_Utilidades;
+implementation
+
+{ TUtilidades }
+
+{*
+ * Retorna uma configuração do arquivo de configuração do projeto
+ *}
+function TPRFWK_Utilidades.obterConfiguracao(sessao: string; ident: string; padrao: string = ''): String;
+var
+  lIni  : TIniFile;
+  lTemp : String;
+begin
+  lTemp := obterIniProjeto();
+
+  if existeIniProjeto() then
+  begin
+    try
+      lIni := TIniFile.Create(lTemp);
+      Result := lIni.ReadString(sessao, ident, padrao);
+    except
+      msgCrit('Erro ao tentar obter informação do arquivo de configurações.');
+      Result := '';
+    end;
+  end
+
+  else
+  begin
+    msgCrit('Arquivo de configuração não encontrado.');
+  end;
+
+end;
+
+{*
+ * Retorna true/false para uma configuração do arquivo de configuração do projeto
+ *}
+function TPRFWK_Utilidades.obterConfiguracaoAsBoolean(sessao: string; ident: string; padrao: boolean = true): boolean;
+var
+  lTemp : String;
+  lPadrao : String;
+begin
+  try
+    if (padrao = true) then
+      lPadrao := '1'
+    else
+      lPadrao := '0';
+
+    lTemp := obterConfiguracao(sessao, ident, lPadrao);
+
+    if (Trim(lTemp) = '1') then
+    begin
+      Result := true;
+    end
+
+    else
+    begin
+      Result := false;
+    end;
+  except
+      msgCrit('Erro ao tentar obter informação do arquivo de configurações.');
+      Result := padrao;
+  end;
+
+end;
+
+{*
+ * Retorna o arquivo INI correspondente ao projeto atual
+ *}
+function TPRFWK_Utilidades.obterIniProjeto: String;
+begin
+  Result := obterPastaProjeto + 'config.ini';
+end;
+
+{*
+ * Retorna a instância da classe (Singleton)
+ *}
+class function TPRFWK_Utilidades.obterInstancia(): TPRFWK_Utilidades;
+begin
+  if instancia = nil then
+    instancia := TPRFWK_Utilidades.Create();
+
+  Result := instancia;
+end;
+
+{*
+ * Retorna se existe ou não o arquivo INI do projeto atual
+ *}
+function TPRFWK_Utilidades.existeIniProjeto():Boolean;
+begin
+  if FileExists(obterIniProjeto()) then
+    Result := true
+  else
+    Result := false;
+end;
+
+{*
+ * Retorna a pasta do projeto atual
+ *}
+function TPRFWK_Utilidades.obterPastaProjeto: String;
+var
+  lTemp : String;
+begin
+  lTemp := ExtractFilePath( Application.ExeName );
+  lTemp := ReplaceStr(lTemp, '/', '\');
+
+  if (RightStr(lTemp,1) <> '\') then
+    lTemp := lTemp + '\';
+
+  Result := lTemp;
+end;
+
+{*
+ * Cria mensagem de informação
+ *}
+procedure TPRFWK_Utilidades.msgInf(texto:String);
+begin
+  MessageBox(Application.Handle, PChar(Texto), PChar('Mensagem'), $00000040);
+end;
+
+{*
+ * Cria mensagem de crítica
+ *}
+procedure TPRFWK_Utilidades.msgCrit(texto:String);
+begin
+  MessageBox(Application.Handle, PChar(Texto), PChar('Mensagem'), $00000010);
+end;
+
+{*
+ * Cria mensagem de alerta
+ *}
+procedure TPRFWK_Utilidades.msgAlerta(texto:String);
+begin
+  MessageBox(Application.Handle, PChar(Texto), PChar('Mensagem'), $00000030);
+end;
+
+{*
+ * Cria mensagem de pergunta
+ *}
+function TPRFWK_Utilidades.msgPerg(texto:String):Boolean;
+begin
+  if MessageBox(Application.Handle, PChar(Texto), PChar('Mensagem'), $00000024) = IDYES then
+  begin
+    Result:= True;
+  end
+  else
+  begin
+    Result:= False;
+  end;
+end;
+
+{*
+ * Cria form em runtime como modal
+ *}
+procedure TPRFWK_Utilidades.criarForm(nomeForm: TFormClass);
+begin
+  Try
+    TForm (nomeForm) := NomeForm.Create(Application);
+    TForm (nomeForm).ShowModal;
+  Finally
+    FreeAndNil(NomeForm);
+  End;
+end;
+
+{*
+ * Substitui string
+ *}
+function TPRFWK_Utilidades.replaceSubstring( stringAntiga, stringNova, s : string ) : string;
+var p : word;
+begin
+  repeat
+    p := Pos( stringAntiga, s );
+    if p > 0 then begin
+      Delete( s, p, Length( stringAntiga ) );
+      Insert( stringNova, s, p );
+    end;
+  until p = 0;
+  replaceSubstring := s;
+end;
+
+{*
+ * Esta é a função que gera os blocos de extenso que depois serão montados
+ *}
+function TPRFWK_Utilidades.extenso3em3( Numero : Word ) : string;
+const Valores : array[1..36] of word = ( 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+13, 14, 15, 16, 17, 18, 19, 20, 30, 40, 50, 60, 70, 80, 90,
+100, 200, 300, 400, 500, 600, 700, 800, 900 );
+Nomes : array[0..36] of String = ( '', 'UM', 'DOIS', 'TRÊS', 'QUATRO',
+'CINCO', 'SEIS', 'SETE', 'OITO', 'NOVE', 'DEZ', 'ONZE',
+'DOZE', 'TREZE', 'QUATORZE', 'QUINZE', 'DEZESSEIS',
+'DEZESSETE', 'DEZOITO', 'DEZENOVE', 'VINTE', 'TRINTA',
+'QUARENTA', 'CINQÜENTA', 'SESSENTA', 'SETENTA', 'OITENTA',
+'NOVENTA', 'CENTO', 'DUZENTOS', 'TREZENTOS', 'QUATROCENTOS',
+'QUINHENTOS', 'SEISCENTOS', 'SETECENTOS', 'OITOCENTOS',
+'NOVECENTOS' );
+var i         : byte;
+Resposta  : string;
+Inteiro   : word;
+Resto     : word;
+begin
+  Inteiro   := Numero;
+  Resposta  := '';
+
+  for i := 36 downto 1 do begin
+    Resto := ( Inteiro div valores[i] ) * valores[i];
+    if ( Resto = valores[i] ) and ( Inteiro >= Resto ) then begin
+      Resposta := Resposta + Nomes[i] + ' E ';
+      Inteiro  := Inteiro - Valores[i];
+    end;
+  end;
+
+  { Corta o 'E' excedente do final da string }
+  extenso3em3 := Copy( Resposta, 1, Length( Resposta ) - 3 );
+end;
+
+{*
+ * Função que retorna o valor passado por parâmetro em extenso
+ *}
+function TPRFWK_Utilidades.extenso( Numero : extended ) : string;
+const NoSingular : array[1..6] of string = ( 'TRILHÃO', 'BILHÃO', 'MILHÃO', 'MIL',
+'REAL', 'CENTAVO' );
+NoPlural   : array[1..6] of string = ( 'TRILHÕES', 'BILHÕES', 'MILHÕES', 'MIL',
+'REAIS', 'CENTAVOS' );
+{
+Estas constantes facilitam o entendimento do código.
+Como os valores de singular e plural são armazenados em um vetor,
+cada posicao indica a grandeza do número armazenado (leia-se sempre
+da esquerda para a direita).
+}
+CasaDosTrilhoes = 1;
+CasaDosBilhoes  = CasaDosTrilhoes + 1;
+CasaDosMilhoes  = CasaDosBilhoes  + 1;
+CasaDosMilhares = CasaDosMilhoes  + 1;
+CasaDasCentenas = CasaDosMilhares + 1;
+CasaDosCentavos = CasaDasCentenas + 1;
+
+var TrioAtual,
+TrioPosterior : byte;
+v             : integer; { usada apenas com o Val }
+Resposta      : array[CasaDosTrilhoes..CasaDosCentavos] of string;
+RespostaN     : array[CasaDosTrilhoes..CasaDosCentavos] of word;
+Plural        : array[CasaDosTrilhoes..CasaDosCentavos] of boolean;
+Inteiro       : extended;
+NumStr        : string;
+TriosUsados   : set of CasaDosTrilhoes..CasaDosCentavos;
+NumTriosInt   : byte;
+
+{ Para os não pascalistas de tradição, observe o uso de uma função
+encapsulada na outra. }
+function ProximoTrio( i : byte ) : byte;
+begin
+  repeat
+    Inc( i );
+  until ( i in TriosUsados ) or ( i >= CasaDosCentavos );
+  ProximoTrio := i;
+end;
+
+begin
+  Inteiro  := Int( Numero * 100 );
+
+  { Inicializa os vetores }
+  for TrioAtual := CasaDosTrilhoes to CasaDosCentavos do begin
+    Resposta[TrioAtual] := '';
+    Plural[TrioAtual]   := False;
+  end;
+
+  {
+  O número é quebrado em partes distintas, agrupadas de três em três casas:
+  centenas, milhares, milhões, bilhões e trilhões. A última parte (a sexta)
+  contém apenas os centavos, com duas casas
+  }
+  Str( Inteiro : 17 : 0, NumStr );
+  TrioAtual    := 1;
+  Inteiro      := Int( Inteiro / 100 ); { remove os centavos }
+
+  { Preenche os espaços vazios com zeros para evitar erros de conversão }
+  while NumStr[TrioAtual] = ' ' do begin
+    NumStr[TrioAtual] := '0';
+    Inc( TrioAtual );
+  end;
+
+  { Inicializa o conjunto como vazio }
+  TriosUsados := [];
+  NumTriosInt := 0; { Números de trios da parte inteira (sem os centavos) }
+
+  { Este loop gera os extensos de cada parte do número }
+  for TrioAtual := CasaDosTrilhoes to CasaDosCentavos do begin
+    Val( Copy( NumStr, 3 * TrioAtual - 2, 3 ), RespostaN[TrioAtual], v );
+    if RespostaN[TrioAtual] <> 0 then begin
+      Resposta[TrioAtual] := Resposta[TrioAtual] +
+      extenso3em3( RespostaN[TrioAtual] );
+      TriosUsados := TriosUsados + [ TrioAtual ];
+      Inc( NumTriosInt );
+      if RespostaN[TrioAtual] > 1 then begin
+        Plural[TrioAtual] := True;
+      end;
+    end;
+  end;
+
+  if CasaDosCentavos in TriosUsados then
+  Dec( NumTriosInt );
+
+  { Gerar a resposta propriamente dita }
+  NumStr := '';
+
+  {
+  Este trecho obriga que o nome da moeda seja sempre impresso no caso de
+  haver uma parte inteira, qualquer que seja o valor.
+  }
+  if (Resposta[CasaDasCentenas]='') and ( Inteiro > 0 ) then begin
+    Resposta[CasaDasCentenas] := ' ';
+    Plural[CasaDasCentenas]   := True;
+    TriosUsados := TriosUsados + [ CasaDasCentenas ];
+  end;
+
+
+  { Basta ser maior que um para que a palavra "real" seja escrita no plural }
+  if Inteiro > 1 then
+  Plural[CasaDasCentenas] := True;
+
+  { Localiza o primeiro elemento }
+  TrioAtual     := 0;
+  TrioPosterior := ProximoTrio( TrioAtual );
+
+  { Localiza o segundo elemento }
+  TrioAtual     := TrioPosterior;
+  TrioPosterior := ProximoTrio( TrioAtual );
+
+  { Este loop vai percorrer apenas os trios preenchidos e saltar os vazios. }
+  while TrioAtual <= CasaDosCentavos do begin
+    { se for apenas cem, não escrever 'cento' }
+    if Resposta[TrioAtual] = 'CENTO' then
+    Resposta[TrioAtual] := 'CEM';
+
+    { Verifica se a resposta deve ser no plural ou no singular }
+    if Resposta[TrioAtual] <> '' then begin
+      NumStr := NumStr + Resposta[TrioAtual] + ' ';
+      if plural[TrioAtual] then
+      NumStr := NumStr + NoPlural[TrioAtual] + ' '
+      else
+      NumStr := NumStr + NoSingular[TrioAtual] + ' ';
+
+      { Verifica a necessidade da particula 'e' para os números }
+      if ( TrioAtual < CasaDosCentavos ) and ( Resposta[TrioPosterior] <> '' )
+      and ( Resposta[TrioPosterior] <> ' ' ) then begin
+        {
+        Este trecho analisa diversos fatores e decide entre usar uma
+        vírgula ou um "E", em função de uma peculiaridade da língua. Veja
+        os exemplos para compreender:
+        - DOIS MIL, QUINHENTOS E CINQÜENTA REAIS
+        - DOIS MIL E QUINHENTOS REAIS
+        - DOIS MIL E UM REAIS
+        - TRÊS MIL E NOVENTA E CINCO REAIS
+        - QUATRO MIL, CENTO E UM REAIS
+        - UM MILHÃO E DUZENTOS MIL REAIS
+        - UM MILHÃO, DUZENTOS MIL E UM REAIS
+        - UM MILHÃO, OITOCENTOS E NOVENTA REAIS
+        Obs.: Fiz o máximo esforço pra que o extenso soasse o mais natural
+        possível em relação à lingua falada, mas se aparecer alguma
+        situação em que algo soe esquisito, peço a gentileza de me
+        avisar.
+        }
+        if ( TrioAtual < CasaDosCentavos ) and
+        ( ( NumTriosInt = 2 ) or ( TrioAtual = CasaDosMilhares ) ) and
+        ( ( RespostaN[TrioPosterior] <= 100 ) or
+        ( RespostaN[TrioPosterior] mod 100 = 0 ) ) then
+        NumStr := NumStr + 'E '
+        else
+        NumStr := NumStr + ', ';
+      end;
+    end;
+
+    { se for apenas trilhões, bilhões ou milhões, acrescenta o 'de' }
+    if ( NumTriosInt = 1 ) and ( Inteiro > 0 ) and ( TrioAtual <= CasaDosMilhoes ) then begin
+      NumStr := NumStr + ' DE ';
+    end;
+
+    { se tiver centavos, acrescenta a partícula 'e', mas somente se houver
+    qualquer valor na parte inteira }
+    if ( TrioAtual = CasaDasCentenas ) and ( Resposta[CasaDosCentavos] <> '' )
+    and ( inteiro > 0 ) then begin
+      NumStr := Copy( NumStr, 1, Length( NumStr ) - 2 ) + ' E ';
+    end;
+
+    TrioAtual     := ProximoTrio( TrioAtual );
+    TrioPosterior := ProximoTrio( TrioAtual );
+  end;
+
+  { Eliminar algumas situações em que o extenso gera excessos de espaços
+  da resposta. Mero perfeccionismo... }
+  NumStr := ReplaceSubstring( '  ', ' ', NumStr );
+  NumStr := ReplaceSubstring( ' ,', ',', NumStr );
+
+  Extenso := NumStr;
+end;
+
+
+{*
+ * Função que retorna os textos entre as tags especificadas
+ *}
+procedure TPRFWK_Utilidades.textoEntreTags( Const S: String; Tag1, Tag2: String; list:TStrings );
+Var
+    pScan, pEnd, pTag1, pTag2: PChar;
+    foundText: String;
+    searchtext: String;
+Begin
+    searchtext := Uppercase(S);
+    Tag1:= Uppercase( Tag1 );
+    Tag2:= Uppercase( Tag2 );
+    pTag1:= PChar(Tag1);
+    pTag2:= PChar(Tag2);
+    pScan:= PChar(searchtext);
+    Repeat
+      { Search for next occurence of Tag1. }
+      pScan:= StrPos( pScan, pTag1 );
+      If pScan <> Nil Then Begin
+        { Found one, hop over it, then search from that position
+          forward for the next occurence of Tag2. }
+        Inc(pScan, Length( Tag1 ));
+        pEnd := StrPos( pScan, pTag2 );
+        If pEnd <> Nil Then Begin
+          { Found start and end tag, isolate text between,
+            add it to the list. We need to get the text from
+            the original S, however, since we want the un-uppercased
+            version!}
+          SetString( foundText, Pchar(S) + (pScan- PChar(searchtext) ), pEnd-pScan );
+          list.Add( foundText );
+
+          { Continue next search after the found end tag. }
+          pScan := pEnd + Length(tag2);
+        End { If }
+        Else { Error, no end tag found for start tag, abort. }
+          pScan := Nil;
+      End; { If }
+    Until pScan = Nil;
+End;
+
+{*
+ * Função que faz o encode de uma url
+ *}
+function TPRFWK_Utilidades.uRLEncode(const S: string; const InQueryString: Boolean): string;
+var
+  Idx: Integer; // loops thru characters in string
+begin
+  Result := '';
+  for Idx := 1 to Length(S) do
+  begin
+    case S[Idx] of
+      'A'..'Z', 'a'..'z', '0'..'9', '-', '_', '.':
+        Result := Result + S[Idx];
+      ' ':
+        if InQueryString then
+          Result := Result + '+'
+        else
+          Result := Result + '%20';
+      else
+        Result := Result + '%' + SysUtils.IntToHex(Ord(S[Idx]), 2);
+    end;
+  end;
+end;
+
+{*
+ * Função que retorna o dia da semana em extenso
+ *}
+function TPRFWK_Utilidades.diaSemana(Data: TDateTime): String;
+{Retorna o dia da semana em Extenso de uma determinada data}
+const
+  Dias : Array[1..7] of String[07] = ('DOMINGO', 'SEGUNDA', 'TERÇA','QUARTA','QUINTA', 'SEXTA','SÁBADO');
+begin
+  Result := Dias[DayOfWeek(Data)];
+end;
+
+{*
+ * Função que retorna em formato de hora os minutos informados
+ *}
+function TPRFWK_Utilidades.minutoParaHora(Minutos: Integer): String;
+begin
+  Result := AnsiReplaceStr( format('%.2d:%.2d',[Minutos div 60,Minutos mod 60]) , '24:', '00:');
+end;
+
+{*
+ * Função que retorna em minutos a hora informada
+ *}
+function TPRFWK_Utilidades.horaParaMinuto(const s: string; const sep: string = ':'): Integer;
+var
+  h,m: shortstring;
+  p  : integer;
+  _h,_m: integer;
+begin
+      Result:= -1;
+      p:= Pos(sep,s);
+      if (p = 0) then
+      exit;
+
+      h:= copy(s,1,p-1);
+      m:= copy(s,p+1,length(s));
+
+      Result:= -2;
+      if TryStrToInt(h,_h) and TryStrToInt(m,_m) then
+      Result:= _h * 60 + _m;
+end;
+
+{*
+ * Função que formata um valor para o formato padrão do banco de dados
+ *}
+function TPRFWK_Utilidades.formatarValorString(Valor:Extended; Precisao: Byte = 2):String;
+begin
+  Result := ReplaceStr( CurrToStrF(Valor, ffNumber, 2), '.', '');
+end;
+
+{*
+ * Função que retorna uma data válida, verificando a data nula
+ *}
+function TPRFWK_Utilidades.dataValida(data: Variant; valorDoBanco: Boolean):String;
+var
+  dataTemp1: TDateTime;
+  dataTemp2: String;
+begin
+  //verifica se é do banco ou não a data informada
+  if valorDoBanco = false then
+  begin
+    try
+      dataTemp1 := StrToDate(data);
+      Result := FormatDateTime('dd/mm/yyyy', dataTemp1);
+    except
+      Result := DATANULA;
+    end;
+  end
+
+  else
+  begin
+    try
+      dataTemp2 := FormatDateTime('dd/mm/yyyy', data);
+
+      if dataTemp2 = DATANULA then
+        Result := ''
+      else
+        Result := FormatDateTime('dd/mm/yyyy', data);
+    except
+      Result := '';
+    end;
+  end;
+end;
+
+{*
+ * Define uma configuração do arquivo de configuração do projeto
+ *}
+procedure TPRFWK_Utilidades.definirConfiguracao(sessao, ident, valor: string);
+var
+  lIni  : TIniFile;
+  lTemp : String;
+begin
+  lTemp := obterIniProjeto();
+
+  if existeIniProjeto() then
+  begin
+    try
+      lIni := TIniFile.Create(lTemp);
+      lIni.WriteString(sessao, ident, valor);
+    except
+      msgCrit('Erro ao tentar definir informação no arquivo de configurações.');
+    end;
+  end
+
+  else
+  begin
+    msgCrit('Arquivo de configuração não encontrado.');
+  end;
+
+end;
+
+{*
+ * Define uma configuração do arquivo de configuração do projeto como booleana
+ *}
+procedure TPRFWK_Utilidades.definirConfiguracaoAsBoolean(sessao, ident:string; valor: Boolean);
+var
+  lTemp : String;
+begin
+  try
+    if (valor = true) then
+      lTemp := '1'
+    else
+      lTemp := '0';
+
+    definirConfiguracao(sessao, ident, lTemp);
+  except
+      msgCrit('Erro ao tentar definir informação no arquivo de configurações.');
+  end;
+end;
+
+{*
+ * Retorna a data nula
+ *}
+function TPRFWK_Utilidades.obterDataNula(): String;
+begin
+  Result := DATANULA;
+end;
+
+{*
+ * Retorna uma data no padrão MS-ACCESS
+ *}
+function TPRFWK_Utilidades.converteDataAccess(data: String; incluiFuncao: Boolean = true):String;
+var
+  dataTemp1: TDateTime;
+  dataTemp2: String;
+begin
+  try
+    dataTemp1 := StrToDate(data);
+
+    if incluiFuncao = true then
+      dataTemp2 := dataTemp2 + 'DATESERIAL(';
+
+    dataTemp2 := dataTemp2 + FormatDateTime('yyyy , mm , dd', dataTemp1);
+
+    if incluiFuncao = true then
+      dataTemp2 := dataTemp2 + ')';
+
+    Result := dataTemp2;
+  except
+    Result := data;
+  end;
+end;
+
+{*
+ * Retorna uma data no padrão MYSQL
+ *}
+function TPRFWK_Utilidades.converteDataMysql(data: String):String;
+var
+  dataTemp1: TDateTime;
+  dataTemp2: String;
+begin
+  try
+    dataTemp1 := StrToDate(data);
+    dataTemp2 := FormatDateTime('yyyy-mm-dd', dataTemp1);
+
+    Result := dataTemp2;
+  except
+    Result := data;
+  end;
+end;
+
+{*
+ * Converte uma color(TColor) para uma string em hexadecimal
+ *}
+function TPRFWK_Utilidades.colorToString(const colColor: TColor; const revert: Boolean = false): string;
+begin
+  if (revert = true) then
+    Result := '$' + IntToHex(GetBValue(colColor), 2) + IntToHex(GetGValue(colColor), 2) + IntToHex(GetRValue(colColor), 2)
+  else
+    Result := '$' + IntToHex(GetRValue(colColor), 2) + IntToHex(GetGValue(colColor), 2) + IntToHex(GetBValue(colColor), 2);
+end;
+
+{*
+ * Converte uma string em hexadecimal para color(TColor)
+ *}
+function TPRFWK_Utilidades.stringToColor(sColor: string; const revert: Boolean = false): Cardinal;
+begin
+  if (Copy(sColor, 1, 1) = '$') then
+    sColor := Copy(sColor, 2, 6);
+
+  if (revert = true) then
+    Result := RGB(StrToInt('$' + Copy(sColor, 5, 2)), StrToInt('$' + Copy(sColor, 3, 2)), StrToInt('$' + Copy(sColor, 1, 2)))
+  else
+    Result := RGB(StrToInt('$' + Copy(sColor, 1, 2)), StrToInt('$' + Copy(sColor, 3, 2)), StrToInt('$' + Copy(sColor, 5, 2)));
+end;
+
+end.

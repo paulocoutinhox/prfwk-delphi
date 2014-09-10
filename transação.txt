@@ -1,0 +1,23 @@
+procedure TFrmPrincipal.FormCreate(Sender: TObject);
+var
+  lMD_Paciente: TMD_Paciente;
+  lDAO_Paciente: TDAO_Paciente;
+begin
+  inicializar();
+
+  lMD_Paciente := TMD_Paciente.Create;
+  lDAO_Paciente := TDAO_Paciente.Create;
+
+  lMD_Paciente.nome := 'teste';
+
+  gConexao.beginTransaction;
+  lDAO_Paciente.inserir(lMD_Paciente);
+  gConexao.rollback;
+  gConexao.beginTransaction;
+  lDAO_Paciente.inserir(lMD_Paciente);
+  gConexao.commit;
+
+  lMD_Paciente.Free;
+  lDAO_Paciente.Free;
+
+end;

@@ -1,0 +1,628 @@
+unit PRFWK_DAO;
+
+interface
+
+uses PRFWK_Classe, Classes, PRFWK_Atributo, PRFWK_Modelo, TypInfo, DBClient, SqlExpr,
+     Provider, PRFWK_Conexao, DB, SysUtils, PRFWK_Utilidades, Variants, PRFWK_ClientDataSet,
+     PRFWK_DataSetProvider, PRFWK_SqlDataSet, AdoDB, PRFWK_AdoDataSet;
+
+
+type
+  TPRFWK_DAO = class(TPRFWK_Classe)
+
+  private
+
+  protected
+    aMapeamentoAtributos  : TList;
+    aClasse               : TPRFWK_Modelo;
+    aClientDataSet        : TPRFWK_ClientDataSet;
+    aSqlDataSet           : TPRFWK_SQLDataSet;
+    aAdoDataSet           : TPRFWK_ADODataSet;
+    aDataSetProvider      : TPRFWK_DataSetProvider;
+    aConexao              : TPRFWK_Conexao;
+    aNomeTabela           : String;
+
+    procedure ProviderBeforeUpdateRecord(Sender: TObject; SourceDS: TDataSet; DeltaDS: TCustomClientDataSet; UpdateKind: TUpdateKind; var Applied: Boolean);
+    procedure montarObjetos();
+    procedure montarEntidade(entidade: TPRFWK_Modelo);
+    procedure definirValoresAtributos(entidade: TPRFWK_Modelo; zeraChavePrimaria: Boolean = true);
+    function  posicionarChavePrimaria(entidade: TPRFWK_Modelo):Boolean;
+
+  public
+    property nomeTabela:String         read aNomeTabela          write aNomeTabela;
+    property mapeamentoAtributos:TList read aMapeamentoAtributos write aMapeamentoAtributos;
+    property classe:TPRFWK_Modelo      read aClasse              write aClasse;
+
+    property conexao:TPRFWK_Conexao                  read aConexao             write aConexao;
+    property clientDataSet:TPRFWK_ClientDataSet      read aClientDataSet       write aClientDataSet;
+    property sqlDataSet:TPRFWK_SQLDataSet            read aSqlDataSet          write aSqlDataSet;
+    property adoDataSet:TPRFWK_ADODataSet            read aAdoDataSet          write aAdoDataSet;
+    property dataSetProvider:TPRFWK_DataSetProvider  read aDataSetProvider     write aDataSetProvider;
+
+    constructor Create; override;
+    destructor  Destroy; override;
+
+    procedure adicionarMapeamento(nome: String; requerido: Boolean = false; sqlIndice: Boolean = False; sqlUpdate: Boolean = True; sqlWhere: Boolean = True);
+    procedure inserir(entidade: TPRFWK_Modelo); virtual;
+    procedure alterar(entidade: TPRFWK_Modelo); virtual;
+    procedure excluir(entidade: TPRFWK_Modelo); virtual;
+    function  obter(entidade: TPRFWK_Modelo):TPRFWK_Modelo; virtual;
+    function  obterTodos(entidade: TPRFWK_Modelo):TList; virtual;
+    function  obterQuantidade():Integer; virtual;
+
+    procedure defineSql(sql: WideString; montaObjetos: Boolean = true);
+
+    procedure fechaDataSet(incluiClientDataSet: Boolean = true);
+    procedure abreDataSet(incluiClientDataSet: Boolean = true);
+  published
+
+  end;
+
+implementation
+
+{ TGerente }
+
+{**
+ * Adiciona mapeamento de atributo da classe
+ *}
+procedure TPRFWK_DAO.adicionarMapeamento(nome: String; sqlIndice: Boolean = False; sqlUpdate: Boolean = True; sqlWhere: Boolean = True);
+var
+  lAtributo : TPRFWK_Atributo;
+begin
+
+  aMapeamentoAtributos.Add( TPRFWK_Atributo.Create );
+
+  lAtributo := aMapeamentoAtributos[ aMapeamentoAtributos.Count-1 ];
+
+  lAtributo.nome             := nome;
+  lAtributo.requerido        := requerido;
+  lAtributo.sqlIndice        := sqlIndice;
+  lAtributo.sqlUpdate        := sqlUpdate;
+  lAtributo.sqlWhere         := sqlWhere;
+
+end;
+
+{**
+ * Construtor
+ *}
+constructor TPRFWK_DAO.Create;
+begin
+  inherited;
+
+  //verifica se definido o nome da entidade
+  if (aNomeTabela = '') then
+  begin
+    TPRFWK_Utilidades.obterInstancia().msgCrit('[' + ClassName + ']: O nome da entidade não foi definido.');
+  end
+
+  else
+  begin
+
+    //cria lista de mapeamento
+    aMapeamentoAtributos := TList.Create;
+
+    //adiciona chave primária - toda tabela precisa ter este campo
+    adicionarMapeamento('ID', false, True, True , True);
+
+    //cria objetos de conexão
+    aClientDataSet   := TPRFWK_ClientDataSet.Create(nil);
+    aDataSetProvider := TPRFWK_DataSetProvider.Create(nil);
+
+    //verifica que tipo de conexão é para criar o dataSet correto
+    if aConexao.driver <> 'ADO' then
+      aSqlDataSet := TPRFWK_SQLDataSet.Create(nil)
+    else
+      aAdoDataSet := TPRFWK_ADODataSet.Create(nil);
+
+    //define nomes
+    aClientDataSet.Name   := 'CDS';
+
+    if aConexao.driver <> 'ADO' then
+      aSqlDataSet.Name := 'SDS'
+    else
+      aAdoDataSet.Name := 'ADS';
+
+    aDataSetProvider.Name := 'DSP';
+
+    //define atributos do SDS
+    if aConexao.driver <> 'ADO' then
+    begin
+      aSqlDataSet.DbxCommandType := 'Dbx.SQL';
+      aSqlDataSet.CommandType    := ctQuery;
+      aSqlDataSet.SQLConnection  := TSQLConnection(aConexao.conexaoSql);
+      aSqlDataSet.CommandText    := '';
+    end
+
+    else
+    begin
+      aAdoDataSet.CommandType := cmdText;
+      aAdoDataSet.Connection  := TADOConnection(aConexao.conexaoSql);
+      aAdoDataSet.CommandText := '';
+    end;
+
+    //define atributos do DSP
+    if aConexao.driver <> 'ADO' then
+      aDataSetProvider.DataSet := aSqlDataSet
+    else
+      aDataSetProvider.DataSet := aAdoDataSet;
+
+    aDataSetProvider.UpdateMode         := upWhereKeyOnly;
+    aDataSetProvider.Options            := [poAllowCommandText,poUseQuoteChar,poPropogateChanges,poCascadeDeletes,poCascadeUpdates];
+    aDataSetProvider.Exported           := true;
+    aDataSetProvider.BeforeUpdateRecord := ProviderBeforeUpdateRecord;
+
+    //define atributos do CDS
+    aClientDataSet.ProviderName := aDataSetProvider.Name;
+    aClientDataSet.StoreDefs    := True;
+    aClientDataSet.SetProvider(aDataSetProvider);
+
+  end;
+
+end;
+
+
+{**
+ * Destrutor
+ *}
+destructor TPRFWK_DAO.Destroy;
+begin
+  inherited;
+
+  //desconecta os dataSets
+  fechaDataSet();
+
+  //destrói objetos
+  aMapeamentoAtributos.Free;
+
+  if aConexao.driver <> 'ADO' then
+    aSqlDataSet.Free
+  else
+    aAdoDataSet.Free;
+
+  aClientDataSet.Free;
+  aDataSetProvider.Free;
+
+end;
+
+{**
+ * Insere objeto no banco
+ *}
+procedure TPRFWK_DAO.inserir(entidade: TPRFWK_Modelo);
+begin
+  //monta dataSets
+  montarObjetos();
+
+  //abre dataSets
+  abreDataSet();
+
+  //adiciona novo registro
+  aClientDataSet.Append;
+
+  //define valores do dataSet baseado no mapeamento
+  definirValoresAtributos(entidade);
+
+  //confirma inclusão
+  aClientDataSet.Post;
+  aClientDataSet.ApplyUpdates(-1);
+
+  //atualiza para liberar o dataSet
+  aClientDataSet.Refresh;
+end;
+
+{**
+ * Obtém objeto do banco
+ *}
+function TPRFWK_DAO.obter(entidade: TPRFWK_Modelo):TPRFWK_Modelo;
+begin
+  //monta dataSets
+  montarObjetos();
+
+  //abre dataSets
+  abreDataSet();
+
+  //posiciona na chave primária
+  if posicionarChavePrimaria(entidade) = true then
+  begin
+    //monta entidade apartir do dataSet
+    montarEntidade(entidade);
+
+    //retorna entidade montada
+    Result := entidade;
+  end
+
+  else
+  begin
+    Result := nil;
+  end;
+end;
+
+{**
+ * Exclui objeto do banco
+ *}
+procedure TPRFWK_DAO.excluir(entidade: TPRFWK_Modelo);
+begin
+  //monta dataSets
+  montarObjetos();
+
+  //abre dataSets
+  abreDataSet();
+
+  //posiciona na chave primária
+  if posicionarChavePrimaria(entidade) = true then
+  begin
+    //exclui registro
+    aClientDataSet.Delete;
+    aClientDataSet.ApplyUpdates(-1);
+  end;
+end;
+
+{**
+ * Altera objeto no banco
+ *}
+procedure TPRFWK_DAO.alterar(entidade: TPRFWK_Modelo);
+begin
+  //monta dataSets
+  montarObjetos();
+
+  //abre dataSets
+  abreDataSet();
+
+  //posiciona na chave primária
+  if posicionarChavePrimaria(entidade) = true then
+  begin
+    //define novos valores e altera
+    aClientDataSet.Edit;
+
+    definirValoresAtributos(entidade, false);
+
+    aClientDataSet.ApplyUpdates(-1);
+  end;
+end;
+
+{**
+ * Obtém todos os objetos do banco
+ *}
+function TPRFWK_DAO.obterTodos(entidade: TPRFWK_Modelo):TList;
+begin
+  //monta dataSets
+  montarObjetos();
+
+  //fecha dataSets
+  fechaDataSet();
+
+  aClientDataSet.SetProvider(aDataSetProvider);
+
+  //cria query
+  if aConexao.driver <> 'ADO'  then
+    aSqlDataSet.CommandText := 'SELECT * FROM ' + nomeTabela
+  else
+    aAdoDataSet.CommandText := 'SELECT * FROM ' + nomeTabela;
+
+  //abre dataSets
+  abreDataSet();
+
+  //posiciona no primeiro registro
+  aClientDataSet.First;
+
+  //percorre o dataSet
+  if aClientDataSet.RecordCount > 0 then
+  begin
+    //cria lista de resultados
+    Result := TList.Create;
+
+    while not aClientDataSet.Eof do
+    begin
+      //monta entidade adicionando na lista
+      Result.Add( entidade.NewInstance );
+
+      //monta entidade apartir do dataSet
+      montarEntidade( Result[Result.Count-1] );
+
+      //próximo registro
+      aClientDataSet.Next;
+    end;
+
+  end
+
+  else
+    Result := nil;
+end;
+
+{**
+ * Obtém a quantidade de registros de uma entidade do banco
+ *}
+function TPRFWK_DAO.obterQuantidade():Integer;
+var
+  lTemp : String;
+begin
+  //monta dataSets
+  montarObjetos();
+
+  //fecha dataSets
+  fechaDataSet();
+
+  aClientDataSet.SetProvider(aDataSetProvider);
+
+  //cria query
+  if aConexao.driver <> 'ADO'  then
+  begin
+    lTemp := aSqlDataSet.CommandText;
+    aSqlDataSet.CommandText := 'SELECT COUNT(ID) FROM ' + nomeTabela;
+  end
+
+  else
+  begin
+    lTemp := aAdoDataSet.CommandText;
+    aAdoDataSet.CommandText := 'SELECT COUNT(ID) FROM ' + nomeTabela;
+  end;
+
+  //abre dataSets
+  abreDataSet();
+
+  //retorna resultado
+  Result := aClientDataSet.Fields[0].AsInteger;
+
+  //fecha dataSets
+  fechaDataSet();
+
+  aClientDataSet.SetProvider(aDataSetProvider);
+
+  if aConexao.driver <> 'ADO'  then
+    aSqlDataSet.CommandText := lTemp
+  else
+    aAdoDataSet.CommandText := lTemp;
+
+  //abre dataSets
+  abreDataSet();
+end;
+
+{**
+ * Monta objetos de conexão
+ *}
+procedure TPRFWK_DAO.montarObjetos();
+begin
+
+  //verifica se já foi montado
+  if aClientDataSet.FieldCount = 0 then
+  begin
+
+    //fecha dataSets
+    fechaDataSet();
+
+    aClientDataSet.SetProvider(aDataSetProvider);
+
+    //define tabela e abre dataSet
+    if aConexao.driver <> 'ADO'  then
+    begin
+      aSqlDataSet.CommandText := 'SELECT * FROM ' + nomeTabela;
+    end
+
+    else
+    begin
+      aAdoDataSet.CommandText := 'SELECT * FROM ' + nomeTabela;
+    end;
+
+    //abre dataSet
+    abreDataSet();
+
+  end;
+
+end;
+
+{**
+ * Adiciona valor dos atributos nos datasets
+ *}
+procedure TPRFWK_DAO.definirValoresAtributos(entidade: TPRFWK_Modelo; zeraChavePrimaria: Boolean = true);
+var
+  lListaPropriedades : PPropList;
+  lContPropriedades  : Integer;
+  x                  : Integer;
+  y                  : Integer;
+  PropInfo           : TPropInfo;
+  PropValue          : Variant;
+  nomeAtributo       : String;
+  nomePropriedade    : String;
+begin
+
+  //define valor da chave primária
+  if zeraChavePrimaria = true then
+    if aClientDataSet.FieldByName( 'ID' ).CanModify then
+      aClientDataSet.FieldByName( 'ID' ).AsVariant := 0;
+
+  //obtém informações dos atributos que são Publisheds
+  lContPropriedades := GetPropList(entidade.ClassInfo, tkAny, nil);
+  GetMem( lListaPropriedades, lContPropriedades * SizeOf(TPropInfo) );
+
+  try
+    GetPropList(entidade, lListaPropriedades);
+
+    for x := 0 to Pred(lContPropriedades) do
+    begin
+      //obtém informações da propriedade
+      PropInfo  := TPropInfo(lListaPropriedades^[x]^);
+      PropValue := GetPropValue(entidade, PropInfo.Name);
+
+      //varre mapeamento
+      for y := 0 to aMapeamentoAtributos.Count - 1 do
+      begin
+        nomeAtributo    := TPRFWK_Atributo(aMapeamentoAtributos[y]).nome;
+        nomePropriedade := PropInfo.Name;
+
+        if (UpperCase(nomeAtributo) = UpperCase(nomePropriedade)) and (UpperCase(nomeAtributo) <> 'ID') then
+        begin
+
+          try
+            aClientDataSet.FindField( nomeAtributo ).AsVariant := PropValue;
+          except
+            //não faz nada
+          end;
+
+        end;
+      end;
+
+    end;
+  finally
+    FreeMem(lListaPropriedades);
+  end;
+
+end;
+
+{**
+ * Monta entidade apartir de dataSet
+ *}
+procedure TPRFWK_DAO.montarEntidade(entidade: TPRFWK_Modelo);
+var
+  x                   : Integer;
+  nomeAtributo        : String;
+  lListaPropriedades  : PPropList;
+  lContPropriedades   : Integer;
+  PropInfo            : TPropInfo;
+  lListaNomeAtributos : TStringList;
+begin
+
+  //verifica se já foi montado
+  if aClientDataSet.FieldCount > 0 then
+  begin
+
+    //obtém informações dos atributos que são Publisheds
+    lContPropriedades := GetPropList(entidade.ClassInfo, tkAny, nil);
+    GetMem( lListaPropriedades, lContPropriedades * SizeOf(TPropInfo) );
+
+    try
+      lListaNomeAtributos := TStringList.Create;
+
+      GetPropList(entidade, lListaPropriedades);
+
+      //varre os atributos da classe para verificar se existe um atributo na classe com o mesmo nome
+      for x := 0 to Pred(lContPropriedades) do
+      begin
+        //obtém informações da propriedade
+        PropInfo := TPropInfo(lListaPropriedades^[x]^);
+        lListaNomeAtributos.Add( PropInfo.Name );
+      end;
+    finally
+      FreeMem(lListaPropriedades);
+    end;
+
+    //varre mapeamento
+    for x := 0 to aMapeamentoAtributos.Count - 1 do
+    begin
+      nomeAtributo := TPRFWK_Atributo(aMapeamentoAtributos[x]).nome;
+
+      try
+        if lListaNomeAtributos.IndexOf(nomeAtributo) > -1 then
+          if aClientDataSet.FieldByName(nomeAtributo).IsNull = false then
+            SetPropValue(entidade, nomeAtributo, aClientDataSet.FieldByName(nomeAtributo).AsVariant);
+      except
+        //não faz nada
+      end;
+
+    end;
+
+    //libera objetos da memória
+    lListaNomeAtributos.Free;
+
+  end;
+
+end;
+
+{**
+ * Posiciona dataSet na chave primária
+ *}
+function TPRFWK_DAO.posicionarChavePrimaria(entidade: TPRFWK_Modelo):Boolean;
+begin
+  Result := aClientDataSet.Locate('ID', entidade.ID , [loPartialKey]);
+end;
+
+{**
+ * Método chamada antes do update
+ *}
+procedure TPRFWK_DAO.ProviderBeforeUpdateRecord(Sender: TObject; SourceDS: TDataSet; DeltaDS: TCustomClientDataSet; UpdateKind: TUpdateKind; var Applied: Boolean);
+var
+  x              : Integer;
+  lProviderFlags : TProviderFlags;
+begin
+  //define atributos dos campos dos dataSets
+  for x := 0 to aMapeamentoAtributos.Count - 1 do
+  begin
+
+    //cria ProviderFlags
+    lProviderFlags := [];
+
+    if TPRFWK_Atributo(aMapeamentoAtributos[x]).sqlIndice = true then
+      lProviderFlags := lProviderFlags + [pfInKey];
+
+    if TPRFWK_Atributo(aMapeamentoAtributos[x]).sqlUpdate = true then
+      lProviderFlags := lProviderFlags + [pfInUpdate];
+
+    if TPRFWK_Atributo(aMapeamentoAtributos[x]).sqlWhere = true then
+      lProviderFlags := lProviderFlags + [pfInWhere];
+
+    //define atributos
+    DeltaDS.FieldByName( TPRFWK_Atributo(aMapeamentoAtributos[x]).nome ).Required      := TPRFWK_Atributo(aMapeamentoAtributos[x]).requerido;
+    DeltaDS.FieldByName( TPRFWK_Atributo(aMapeamentoAtributos[x]).nome ).ProviderFlags := lProviderFlags;
+
+  end;
+end;
+
+{**
+ * Método que define uma query sql executando os processos básicos
+ *}
+procedure TPRFWK_DAO.defineSql(sql: WideString; montaObjetos: Boolean = true);
+begin
+  //monta dataSets
+  if (montaObjetos = true) then
+    montarObjetos();
+
+  //fecha dataSets
+  fechaDataSet();
+
+  //define provider
+  aClientDataSet.SetProvider(aDataSetProvider);
+
+  //define query sql
+  if aConexao.driver <> 'ADO'  then
+    aSqlDataSet.CommandText := sql
+  else
+    aAdoDataSet.CommandText := sql;
+
+  //abre dataSets
+  abreDataSet();
+
+  //posiciona no primeiro registro
+  aClientDataSet.First;
+
+end;
+
+{**
+ * Método que fecha o dataSet correto
+ *}
+procedure TPRFWK_DAO.fechaDataSet(incluiClientDataSet: Boolean = true);
+begin
+  //fecha dataSets
+  if aConexao.driver <> 'ADO' then
+    aSqlDataSet.Close
+  else
+    aAdoDataSet.Close;
+
+  if incluiClientDataSet = true then
+    aClientDataSet.Close;
+end;
+
+{**
+ * Método que abre o dataSet correto
+ *}
+procedure TPRFWK_DAO.abreDataSet(incluiClientDataSet: Boolean = true);
+begin
+  //fecha dataSets
+  if aConexao.driver <> 'ADO' then
+    aSqlDataSet.Open
+  else
+    aAdoDataSet.Open;
+
+  if incluiClientDataSet = true then
+    aClientDataSet.Open;
+end;
+
+
+end.

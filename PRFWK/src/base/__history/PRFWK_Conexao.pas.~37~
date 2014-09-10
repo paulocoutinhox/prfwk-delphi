@@ -1,0 +1,173 @@
+unit PRFWK_Conexao;
+
+interface
+
+uses PRFWK_Classe, SqlExpr, PRFWK_Utilidades, Midas, DB, AdoDB, StrUtils, DBXDynalink, DBXMySQL,
+DBXCommon;
+
+type
+  TPRFWK_Conexao = class(TPRFWK_Classe)
+
+  private
+    aConexaoSql  : TCustomConnection;
+    aDriver      : String;
+    aNomeConexao : WideString;
+    aVendorlib   : String;
+    aLibraryName : String;
+    aDBXTrans    : TDBXTransaction;
+    aSQLTrans    : Integer;
+
+  public
+    constructor Create; override;
+    destructor Destroy; override;
+
+    property conexaoSql:TCustomConnection  read aConexaoSql  write aConexaoSql;
+    property driver:String                 read aDriver      write aDriver;
+    property nomeConexao:WideString        read aNomeConexao write aNomeConexao;
+    property vendorlib:String              read aVendorlib   write aVendorlib;
+    property libraryName:String            read aLibraryName write aLibraryName;
+
+
+    procedure criarConexao(driver: String; nomeConexao: WideString);
+    procedure conectar;
+    procedure desconectar;
+    procedure beginTransaction(tipoTransacaoDBX: Integer = TDBXIsolations.ReadCommitted);
+    procedure commit;
+    procedure rollback;
+  published
+
+  end;
+
+implementation
+
+{ TConexao }
+
+{**
+ * Construtor
+ *}
+constructor TPRFWK_Conexao.Create;
+begin
+  inherited;
+end;
+
+{**
+ * Destrutor
+ *}
+destructor TPRFWK_Conexao.Destroy;
+begin
+  inherited;
+
+  //desconecta e libera da memória a conexão
+  aConexaoSql.Close;
+  aConexaoSql.Free;
+
+end;
+
+{**
+ * Método de criação de conexão
+ *}
+procedure TPRFWK_Conexao.criarConexao(driver: String; nomeConexao: WideString);
+begin
+  //armazena atributos
+  aDriver      := driver;
+  aNomeConexao := nomeConexao;
+
+  //verifica o tipo do driver
+  if driver <> 'ADO' then
+  begin
+    aConexaoSql := TSQLConnection.Create(nil);
+
+    TSQLConnection(aConexaoSql).LoadParamsOnConnect := false;
+    TSQLConnection(aConexaoSql).ConnectionName := nomeConexao;
+    TSQLConnection(aConexaoSql).DriverName     := driver;
+
+    TSQLConnection(aConexaoSql).LoadParamsFromIniFile( TPRFWK_Utilidades.obterInstancia().obterPastaProjeto() + 'dbxconnections.ini' );
+
+    TSQLConnection(aConexaoSql).LoginPrompt    := false;
+    TSQLConnection(aConexaoSql).KeepConnection := true;
+
+    if aVendorLib <> '' then
+      TSQLConnection(aConexaoSql).VendorLib := aVendorLib;
+
+    if aLibraryName <> '' then
+      TSQLConnection(aConexaoSql).LibraryName := aLibraryName;
+  end
+
+  else
+  begin
+    aConexaoSql := TADOConnection.Create(nil);
+
+    nomeConexao := AnsiReplaceStr(nomeConexao, '[PASTA_PROJETO]', TPRFWK_Utilidades.obterInstancia().obterPastaProjeto());
+
+    TADOConnection(aConexaoSql).ConnectionString  := nomeConexao;
+    TADOConnection(aConexaoSql).KeepConnection    := true;
+    TADOConnection(aConexaoSql).LoginPrompt       := false;
+    TADOConnection(aConexaoSql).Mode              := cmShareDenyNone;
+  end;
+end;
+
+{**
+ * Método de conexão ao banco
+ *}
+procedure TPRFWK_Conexao.conectar;
+begin
+  aConexaoSql.Open;
+end;
+
+{**
+ * Método de desconexão ao banco
+ *}
+procedure TPRFWK_Conexao.desconectar;
+begin
+  aConexaoSql.Close;
+end;
+
+{**
+ * Método que inicia a transação
+ *}
+procedure TPRFWK_Conexao.beginTransaction(tipoTransacaoDBX: TDBXIsolations = TDBXIsolations.ReadCommitted);
+begin
+  if driver = 'ADO' then
+  begin
+    aSQLTrans := TADOConnection(aConexaoSql).BeginTrans;
+  end
+
+  else
+  begin
+    aDBXTrans := TSQLConnection(aConexaoSql).BeginTransaction(tipoTransacaoDBX);
+  end;
+end;
+
+{**
+ * Método que finaliza(commit) a transação
+ *}
+procedure TPRFWK_Conexao.commit;
+begin
+  if driver = 'ADO' then
+  begin
+    TADOConnection(aConexaoSql).CommitTrans;
+  end
+
+  else
+  begin
+    TSQLConnection(aConexaoSql).CommitFreeAndNil(aDBXTrans);
+  end;
+end;
+
+{**
+ * Método que realiza o rollback na transação
+ *}
+procedure TPRFWK_Conexao.rollback;
+begin
+  if driver = 'ADO' then
+  begin
+    TADOConnection(aConexaoSql).RollbackTrans;
+  end
+
+  else
+  begin
+    TSQLConnection(aConexaoSql).RollbackFreeAndNil(aDBXTrans);
+  end;
+end;
+
+end.

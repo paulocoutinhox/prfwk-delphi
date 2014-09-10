@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<BorlandProject>
+  <Transactions>
+    <Transaction>2010/05/25 01:32:32.437.pas,C:\Documents and Settings\admin\Meus documentos\RAD Studio\Projects\Unit1.pas=E:\workspace_delphi\UFrmPrincipal.pas</Transaction>
+    <Transaction>2010/05/25 01:32:32.437.dfm,C:\Documents and Settings\admin\Meus documentos\RAD Studio\Projects\Unit1.dfm=E:\workspace_delphi\UFrmPrincipal.dfm</Transaction>
+    <Transaction>2010/05/25 01:32:44.843.bdsproj,C:\Documents and Settings\admin\Meus documentos\RAD Studio\Projects\Project1.bdsproj=E:\workspace_delphi\TestePRFWK.bdsproj</Transaction>
+  </Transactions>
+</BorlandProject>
